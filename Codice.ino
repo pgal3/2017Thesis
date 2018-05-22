@@ -1,4 +1,4 @@
-//===================================== LIBRERIE USATE
+//===================================== Libraries
 extern "C" {
   #include <user_interface.h>
   }
@@ -6,30 +6,30 @@ extern "C" {
 #include <PubSubClient.h>
 #include <Wire.h>
 #include <SPI.h>
-#include <Adafruit_Sensor.h>    //Per il BME280
-#include <Adafruit_BME280.h>    //Per il BME280
+#include <Adafruit_Sensor.h>    //For the BME280 chip
+#include <Adafruit_BME280.h>    //For the BME280 chip
 #include <pgmspace.h>          
-#include "./defmacORD.h"        //Lista .h dei MAC registrati dall'IEEE
+#include "./defmacORD.h"        //List of the IEEE registered MAC addresses
 
-//===================================== DICHIARAZIONI
+//===================================== Declarations
 
-#define DEVICES_MAX             400            //numero massimo di dispositivi catturati
-#define DATA_LENGTH             112            //vedi documento Espressif
-#define TYPE_MANAGEMENT         0x00           //tipo di frame: management
-#define SUBTYPE_PROBE_REQUEST   0x04           //sottotipo probe request
-#define SUBTYPE_PROBE_RESP      0x05           //sottotipo probe response
-#define FINESSE                  40            //numero intervalli di potenza considerati
-#define HIST                     40            //numero eventi passati memorizzati e considerati
-#define ssid                    "G2"           //ssid per il collegamento wifi
-#define password             "lgg2wifi"        //password della rete wifi
-#define mqtt_server        "54.93.65.245"      //IP del server mqtt (del server aws)
-#define mqtt_port               1883           //porta del collegamento mqtt
-#define username               "tesi"          //username del collegamento mqtt
-#define pwd                    "1802"          //password del collegamento mqtt
-#define SEALEVELPRESSURE      1013.25          //pressione al livello del mare in hPa
+#define DEVICES_MAX             400            //Maximum number of captured devices
+#define DATA_LENGTH             112            //See Espressif spec file
+#define TYPE_MANAGEMENT         0x00           //For management type of frame
+#define SUBTYPE_PROBE_REQUEST   0x04           //Probe request sub-type
+#define SUBTYPE_PROBE_RESP      0x05           //Probe response sub-type
+#define FINESSE                  40            //Number of power intervals/power sensitivity
+#define HIST                     40            //Maximum number of input considered/ history
+#define ssid                    "G2"           //ssid 
+#define password             "lgg2wifi"        //password of WiFi
+#define mqtt_server        "54.93.65.245"      //IP of the MQTT server
+#define mqtt_port               1883           //MQTT port
+#define username               "tesi"          //username for MQTT
+#define pwd                    "1802"          //MQTT password 
+#define SEALEVELPRESSURE      1013.25          //sea level pressure in hPa
 
 //===================================== MQTT TOPICS
-//il numero della stanza è da cambiare in base alla stanza considerata in room1, room2 o room3
+//the number of the room is to change based on the room you're into. (eg. room1, room2 o room3)
 
 #define txtopic1           "room1/temperature"
 #define txtopic2           "room1/pressure"
@@ -50,15 +50,14 @@ extern "C" {
 #define rxtopic2           "room1/statistics/nreal"
 #define rxtopic3           "room1/setPwr"
 
-//===================================== DICHIARAZIONE DEI PIN USATI
-
-#define ledpin               BUILTIN_LED       //pin del led (in questo caso quello interno)
-#define button                  D4             //pin del pulsante 
+//===================================== Pin Declaration
+#define ledpin               BUILTIN_LED       //Built-in led pin
+#define button                  D4             //button pin
 #define BME_SCK                 D1             //pin sck (i2c)
 #define BME_SDI                 D2             //pin sdi (i2c)
-#define photoRpin               A0             //pin del fotoresistore
+#define photoRpin               A0             //photoresistor pin
 
-//===================================== DICHIARAZIONE VARIABILI
+//===================================== Variables declaration
 Adafruit_BME280 bme;
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -66,32 +65,29 @@ PubSubClient client(espClient);
 unsigned long CurrentMills=0;       
 unsigned long PrevMills=0;          
 unsigned long PrevChange=0;         
-unsigned long mqtt_freq=300000;                      //frequenza di invio dei dati, inizialmente impostata a 5 minuti
-unsigned long nciclo=0;                              //numero di volte che ho inviato il dato
-unsigned int nstima=0;                               //numero persone stimato
-unsigned int delta[FINESSE]={0};                     //numero di dispositivi attuale per slot di potenza 
-unsigned int deltaRndm[FINESSE]={0};                 //numero di dispositivi random attuale per slot di potenza
-unsigned int deltaSaved[HIST][FINESSE]={0};          //record del numero di dispositivi passati per slot di potenza
-unsigned int deltaRndmSaved[HIST][FINESSE]={0};      //record del numero di dispositivi random passati per slot di potenza
+unsigned long mqtt_freq=300000;                      //Data sending frequency
+unsigned long nciclo=0;                              //Cicle number (or number of time the data was sent)
+unsigned int nstima=0;                               //Estimated number of persons
+unsigned int delta[FINESSE]={0};                     //Number of MACs captured (related to the power)
+unsigned int deltaRndm[FINESSE]={0};                 //Number of random MACs (related to the power)
+unsigned int deltaSaved[HIST][FINESSE]={0};          //Past number of devices/MACs related to power
+unsigned int deltaRndmSaved[HIST][FINESSE]={0};      //Past number of random MACs related to power
 unsigned int i=0;                                    
-unsigned int occupancy=0;                            //prima posizione libera nella tabella di MAC salvati
-unsigned int nreal[HIST]={0};                        //ground truth in funzione del tempo
+unsigned int occupancy=0;                            //First free slot on the MAC array.
+unsigned int nreal[HIST]={0};                        //ground truth (function of time)
 int pwrange[]={-44,-48,-52,-54,-56,-58,-60,-62,-64,-66,-68,-70,-72,-73,-74,-75,-76,-77,-78,-79,-80,-81,-82,-83,-84,-85,-86,-87,-88,-89,-90,-91,-92,-93,-94,-95,-96,-97,-98,-120};
-char topicbuf[30];                                   //buffer interente al nome del topic
-char addr[] = "000000000000";                        //sono 13 caratteri (12+il null)              
+char topicbuf[30];                                   //buffer for the topic's name
+char addr[] = "000000000000";                        //13 characters for the MAC address (12+il null)              
 byte flag=0;
 byte event=0;
 byte indice=FINESSE-1;                               
-byte buttonstatus=0;                                 //stato del pulsante
-byte lastButtonStatus=0;                             //ultimo stato del pulsante registrato
-byte SetPower=0;                                     //flag che indica la validità o no dell'Nreal letto nell'mqtt
+byte buttonstatus=0;                                 //Button state
+byte lastButtonStatus=0;                             //Latest button state
+byte SetPower=0;                                     //Flag for the validity of the NReal number received. if =0 is valid.
 float Alfa=1;                                        
-float Beta=0.001;                                    //non posso usare 0 perchè in caso di 0*0 va tutto in crash
+float Beta=0.001;                                    //DO NOT use 0, otherwise --> ERROR 0*0
 
-
-//===================================== STRUTTURE DAL DOCUMENTO ESPRESSIF
-
-
+//===================================== Structures from the ESPRESSIF resources
 struct RxControl {
  signed rssi:8; // signal intensity of packet
  unsigned rate:4;
@@ -126,7 +122,7 @@ struct SnifferPacket{
     uint16_t len;
 };
 
-//===================================== STRUTTURA DI SALVATAGGIO DATI
+//===================================== Structure for data saving
 
 struct Savings{
        char mac[13]={0};         // indirizzo MAC
@@ -135,19 +131,19 @@ struct Savings{
        boolean rndm=0;           //flag per dire se è random o no
 }Saved[DEVICES_MAX];
 
-//===================================== STRUTTURA PER SALVATAGGIO DEL MAC E SSID
+//===================================== Function to get the MAC address
 
 void getMAC(char *addr, uint8_t* data, uint16_t offset) {
   sprintf(addr, "%02x%02x%02x%02x%02x%02x", data[offset+0], data[offset+1], data[offset+2], data[offset+3], data[offset+4], data[offset+5]);
 }
 
-//===================================== FUNZIONE DI RICERCA DEL MAC NELLA LISTA DELL'IEEE
+//===================================== Binary search for the MAC address in IEEE list
 boolean ricerca(int inizio, int fine){                
   int media;
-  if(inizio>fine) return 0; //non trovato
+  if(inizio>fine) return 0; //not found
   else{
     media=(inizio+fine)/2;
-    if(strncmp_P(addr,(char*)pgm_read_dword(&(mac_table[media])),6)==0) return 1; //trovato!
+    if(strncmp_P(addr,(char*)pgm_read_dword(&(mac_table[media])),6)==0) return 1; //EUREKA!
     else
        if(strncmp_P(addr,(char*)pgm_read_dword(&(mac_table[media])),6)>0)
                ricerca(media+1,fine);
@@ -155,7 +151,7 @@ boolean ricerca(int inizio, int fine){
   }
 }
 
-//===================================== FUNZIONE PER RIORDINARE LA TABELLA SENZA LASCIARE RIGHE VUOTE
+//===================================== Sorting the table to leave no free rows
 void sort(unsigned int j){
    while(j<occupancy){
          Saved[j]=Saved[j+1];
@@ -164,7 +160,7 @@ void sort(unsigned int j){
   occupancy--;
   }
 
-//===================================== FUNZIONE PRINCIPALE DI FILTRAGGIO E SALVATAGGIO DEI PROBE
+//===================================== Filtering and saving of probe requests
 
 void showMetadata(SnifferPacket *snifferPacket) {
     
@@ -172,17 +168,17 @@ void showMetadata(SnifferPacket *snifferPacket) {
   uint8_t frameType    = (frameControl & 0b0000000000001100) >> 2;
   uint8_t frameSubType = (frameControl & 0b0000000011110000) >> 4;
   
-//===================================== FILTRO I SOLI PROBE REQUEST
+//===================================== we take only the probe requests
   
   if (frameType == TYPE_MANAGEMENT && frameSubType == SUBTYPE_PROBE_REQUEST) 
      {
-      getMAC(addr, snifferPacket->data, 10);                 //prendo il MAC di chi ha inviato il probe
+      getMAC(addr, snifferPacket->data, 10);                 //getting the mac address
       flag=0;       
-      for(i=0;i<occupancy;i++){                              //controllo se ho già il MAC in memoria e nel caso aggiorno l'rssi e la delta
+      for(i=0;i<occupancy;i++){                              //Check if I've already seen that MAC address
          if(strcmp(addr,Saved[i].mac)==0)
                       {
-                       if(Saved[i].RSSI != snifferPacket->rx_ctrl.rssi){ //se la potenza ricevuta è diversa allora la aggiorno
-					               for(int j=FINESSE-1;j>=0;j--){                  //rimuovo dal conteggio dei dispositivi la vecchia potenza
+                       if(Saved[i].RSSI != snifferPacket->rx_ctrl.rssi){ //if the received power is different --> update it
+					               for(int j=FINESSE-1;j>=0;j--){                  //remove, from the total count based on the power, the old value
                            if(Saved[i].RSSI>=pwrange[j]){                
                                                  switch(Saved[i].rndm){  
                                                       case 0: delta[j]--; break;
@@ -191,8 +187,8 @@ void showMetadata(SnifferPacket *snifferPacket) {
                            }
                            else break;
                            } 
-					             Saved[i].RSSI=snifferPacket->rx_ctrl.rssi;		     //salvo la nuova potenza ricevuta			             
-                       for(int j=0;j<FINESSE;j++){                       //aggiorno il conteggio attuale dei dispositivi
+					             Saved[i].RSSI=snifferPacket->rx_ctrl.rssi;		     //saving the new power value		             
+                       for(int j=0;j<FINESSE;j++){                       //update the device*power count.
                        if(Saved[i].RSSI>=pwrange[j] && Saved[i].rndm==0) delta[j]++;
                        if(Saved[i].RSSI>=pwrange[j] && Saved[i].rndm==1) deltaRndm[j]++;
                        }
@@ -246,7 +242,7 @@ void showMetadata(SnifferPacket *snifferPacket) {
 }
 
 
-// ========================== FUNZIONE DI CALLBACK
+// ========================== Callback function
  
 void sniffer_callback(uint8_t *buffer, uint16_t length) {
   struct SnifferPacket *snifferPacket = (struct SnifferPacket*) buffer;
@@ -725,7 +721,7 @@ for(i=0;i<occupancy;i++){
     return;
   }
   
-  if(!mqtt_rx()){
+  if(!mqtt_rx()){  //checks if the mqtt data were correctly downloaded/seen. If not, it exits from this loop.
     buttonstatus=digitalRead(button);
     lastButtonStatus=buttonstatus;
     PrevMills=millis(); 
