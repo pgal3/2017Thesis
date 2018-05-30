@@ -29,7 +29,7 @@ extern "C" {
 #define SEALEVELPRESSURE      1013.25          //sea level pressure in hPa
 
 //===================================== MQTT TOPICS
-//the number of the room is to change based on the room you're into. (eg. room1, room2 o room3)
+//the number of the room is changed based on the room you're into. (eg. room1, room2 o room3)
 
 #define txtopic1           "room1/temperature"
 #define txtopic2           "room1/pressure"
@@ -72,7 +72,7 @@ unsigned int delta[FINESSE]={0};                     //Number of MACs captured (
 unsigned int deltaRndm[FINESSE]={0};                 //Number of random MACs (related to the power)
 unsigned int deltaSaved[HIST][FINESSE]={0};          //Past number of devices/MACs related to power
 unsigned int deltaRndmSaved[HIST][FINESSE]={0};      //Past number of random MACs related to power
-unsigned int i=0;                                    
+unsigned int i=0;                                    //index
 unsigned int occupancy=0;                            //First free slot on the MAC array.
 unsigned int nreal[HIST]={0};                        //ground truth (function of time)
 int pwrange[]={-44,-48,-52,-54,-56,-58,-60,-62,-64,-66,-68,-70,-72,-73,-74,-75,-76,-77,-78,-79,-80,-81,-82,-83,-84,-85,-86,-87,-88,-89,-90,-91,-92,-93,-94,-95,-96,-97,-98,-120};
@@ -84,7 +84,7 @@ byte indice=FINESSE-1;
 byte buttonstatus=0;                                 //Button state
 byte lastButtonStatus=0;                             //Latest button state
 byte SetPower=0;                                     //Flag for the validity of the NReal number received. if =0 is valid.
-float Alfa=1;                                        
+float Alfa=1;                                        //Startup value of alpha
 float Beta=0.001;                                    //DO NOT use 0, otherwise --> ERROR 0*0
 
 //===================================== Structures from the ESPRESSIF resources
@@ -125,10 +125,10 @@ struct SnifferPacket{
 //===================================== Structure for data saving
 
 struct Savings{
-       char mac[13]={0};         // indirizzo MAC
-       unsigned long Time=0;     // ultima volta che è stato visto
-	     int RSSI=0;               // potenza ricevuta
-       boolean rndm=0;           //flag per dire se è random o no
+       char mac[13]={0};         // MAC address
+       unsigned long Time=0;     // last time seen
+	     int RSSI=0;         // received power
+       boolean rndm=0;           // =0 if MAC random, =1 otherwise
 }Saved[DEVICES_MAX];
 
 //===================================== Function to get the MAC address
@@ -178,7 +178,7 @@ void showMetadata(SnifferPacket *snifferPacket) {
          if(strcmp(addr,Saved[i].mac)==0)
                       {
                        if(Saved[i].RSSI != snifferPacket->rx_ctrl.rssi){ //if the received power is different --> update it
-					               for(int j=FINESSE-1;j>=0;j--){                  //remove, from the total count based on the power, the old value
+					               for(int j=FINESSE-1;j>=0;j--){   //removes, from the total count based on the power, the old value
                            if(Saved[i].RSSI>=pwrange[j]){                
                                                  switch(Saved[i].rndm){  
                                                       case 0: delta[j]--; break;
@@ -188,18 +188,18 @@ void showMetadata(SnifferPacket *snifferPacket) {
                            else break;
                            } 
 					             Saved[i].RSSI=snifferPacket->rx_ctrl.rssi;		     //saving the new power value		             
-                       for(int j=0;j<FINESSE;j++){                       //update the device*power count.
+                       for(int j=0;j<FINESSE;j++){                       //updates the device*power count.
                        if(Saved[i].RSSI>=pwrange[j] && Saved[i].rndm==0) delta[j]++;
                        if(Saved[i].RSSI>=pwrange[j] && Saved[i].rndm==1) deltaRndm[j]++;
                        }
                        }
-                       Saved[i].Time=millis();                           //salvo il momento in cui ho ricevuto il probe
+                       Saved[i].Time=millis();                           //saves the time in which the probe has arrived
                        flag=1;                   
                        break;
                        }
                        }
                        
-        if(flag==0){                                                     //se è un nuovo dispositivo non già registrato
+        if(flag==0){                                                     //if the MAC address is new (never seen before)
         strcpy(Saved[occupancy].mac,addr);
         Saved[occupancy].Time=millis();
 		    Saved[occupancy].RSSI=snifferPacket->rx_ctrl.rssi;
@@ -280,7 +280,7 @@ boolean mqttconnect() {
 
 
 //=================================================================
-//============================= Creazione della connessione wifi
+//============================= Wifi connection
 boolean setup_wifi() {            
   delay(10);  
   Serial.println();
@@ -294,15 +294,15 @@ boolean setup_wifi() {
   i++;
   if(i==10){
     Serial.println("WI-FI Connection Error");
-    return 0;                     //ci sta mettendo troppo a collegarsi, lascio perdere
+    return 0;                     // it takes to long to connect
   }
   }
   Serial.println("");
   Serial.println("WiFi connected");  
-  return 1;                                 //connessione avvenuta con successo
+  return 1;                                 //connection succeded
 }
 
-//============================= Connessione ed invio del messaggio MQTT
+//============================= connection to the MQTT server and messages rx/tx
 boolean mqtt_rx(){
   
   client.subscribe(rxtopic1);
@@ -619,7 +619,7 @@ unsigned int powerfilter(){
             for(int k=0;k<=event;k++){
                temp=nreal[k]-alfatemp*deltaSaved[k][j];
                temp=temp-betatemp*deltaRndmSaved[k][j];
-               error=error+pow(temp,2); //così calcolo tutti gli errori alla potenza j al passato k
+               error=error+pow(temp,2);   //Calculate the error at power j and step k
                                      }
          temp=event+1;
          error=error/temp;
@@ -671,7 +671,7 @@ void setup() {
 
 void loop() {
 
-//================ TOLGO LE PERSONE INATTIVE PER PIU' DI 7 MIN
+//================ Removing of inactive address (if inactive for more than 7 minutes)
 
 for(i=0;i<occupancy;i++){
         CurrentMills=millis();
@@ -690,7 +690,7 @@ for(i=0;i<occupancy;i++){
         }
 
 
-//================ TRASMISSIONE MQTT
+//================ MQTT Transmission
 
  buttonstatus=digitalRead(button);
  CurrentMills=millis();
@@ -698,7 +698,7 @@ for(i=0;i<occupancy;i++){
     
   digitalWrite(ledpin,LOW);
   wifi_promiscuous_enable(0);
-  // CONNETTO AL WIFI
+  // Wifi connect
   if(!setup_wifi()){
     buttonstatus=digitalRead(button);
     lastButtonStatus=buttonstatus;
@@ -708,7 +708,7 @@ for(i=0;i<occupancy;i++){
     delay(10);
     return;
   }
-  //CONNETTO ALL'MQTT
+  //Mqtt connect
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
   if(!mqttconnect()){
@@ -732,7 +732,7 @@ for(i=0;i<occupancy;i++){
   }
     
   nciclo++;  
-  if(SetPower==0){  //allora in questo caso deve aggiustare i filtri di potenza per un nuovo nreal
+  if(SetPower==0){  //in this case the model adjust its parameters (alpha, beta, power) based on the new input
     for(int j=0;j<FINESSE;j++){
       deltaSaved[event][j]=delta[j];
       deltaRndmSaved[event][j]=deltaRndm[j];
