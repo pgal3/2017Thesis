@@ -13,7 +13,7 @@ extern "C" {
 
 //===================================== Declarations
 
-#define DEVICES_MAX             400            //Maximum number of captured devices
+#define DEVICES_MAX             500            //Maximum number of captured devices
 #define DATA_LENGTH             112            //See Espressif spec file
 #define TYPE_MANAGEMENT         0x00           //For management type of frame
 #define SUBTYPE_PROBE_REQUEST   0x04           //Probe request sub-type
